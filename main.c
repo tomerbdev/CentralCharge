@@ -351,3 +351,108 @@ int getValidStatus(void) {
         //parse integer from input string
         if (sscanf(inputBuffer, "%d", &status) != 1) {
             printf("Invalid input. Only 1 (FREE) or 3 (BROKEN) can be set manually.\n");
+            continue;
+        }
+
+        if (status != FREE && status != BROKEN) {
+            printf("Invalid status. Only 1 (FREE) or 3 (BROKEN) can be set manually.\n");
+            continue;
+        }
+
+        break;
+    }
+
+    return status;
+}
+
+int getValidPortType(void) {
+    char inputBuffer[100];
+    int portType = 0;
+    char* newline;
+
+    while (1) {
+        printf("Please enter port type (1=FAST, 2=MID, 3=SLOW): ");
+
+        if (fgets(inputBuffer, sizeof(inputBuffer), stdin) == NULL) {
+            printf("Input error. Try again.\n");
+            continue;
+        }
+
+        //remove trailing newline
+        newline = strchr(inputBuffer, '\n');
+        if (newline) *newline = '\0';
+
+        //check for empty input
+        if (strlen(inputBuffer) == 0) {
+            printf("Input cannot be empty. Try again.\n");
+            continue;
+        }
+
+        //parse integer from input string
+        if (sscanf(inputBuffer, "%d", &portType) != 1) {
+            printf("Invalid input. Please enter a number (1=FAST, 2=MID, 3=SLOW).\n");
+            continue;
+        }
+
+        if (portType != FAST && portType != MID && portType != SLOW) {
+            printf("Invalid port type. Must be 1=FAST, 2=MID, or 3=SLOW. Try again.\n");
+            continue;
+        }
+
+        break;
+    }
+
+    return portType;
+}
+
+//car management functions
+void addCar(Car** carsArray, int* numCars, int* carsCapacity){
+    char licensePlate[MAX_LICENSE_STR + 1];
+
+    printf("Please enter new car details to system according to instructions: \n");
+
+    getValidPlate(licensePlate);
+
+    //check if already exists in system
+    for (int index = 0; index < *numCars; index++) {
+        if (strcmp((*carsArray)[index].licensePlate, licensePlate) == 0) {
+            printf("License plate already exists. Returning to Menu.\n");
+            return;
+        }
+    }
+
+    int portType = getValidPortType();
+
+    //creating new car based on input
+    Car newCar = { 0 };
+    strcpy(newCar.licensePlate, licensePlate);
+    newCar.portType = portType;
+    newCar.totalChargedMinutes = 0;
+    newCar.isConnected = UNCONNECTED;
+    newCar.connectedPortId = DEFAULT_PORT_ID;
+
+    //car insertion
+    if (*numCars >= *carsCapacity) //memory check
+        resizeCarsArray(carsArray, carsCapacity);
+
+    int insertion = *numCars;
+    while (insertion > 0 && strcmp((*carsArray)[insertion - 1].licensePlate, newCar.licensePlate) > 0) {
+        (*carsArray)[insertion] = (*carsArray)[insertion - 1];
+        insertion--;
+    }
+
+    (*carsArray)[insertion] = newCar;
+    (*numCars)++;
+
+    printf("New car added to system.\n");
+}
+
+//car details printer helper for both displayCar and displayAllCars
+void printCarDetails(Car* carToDisplay, Port* portsArray, int numPorts) {
+    int elapsed = 0;
+    if (!carToDisplay) return;
+
+    //if car is connected, update charged minutes based on port's startTime
+    if (carToDisplay->isConnected) {
+        //find the connected port
+        int connectedPortIndex = -1;
