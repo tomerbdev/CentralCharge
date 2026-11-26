@@ -573,3 +573,159 @@ void updatePortStatus(Port* portsArray, int numPorts, Car* carsArray, int numCar
         if (scanf("%d", &newStatus) != 1) {
             printf("Invalid status. Only FREE or BROKEN can be set manually.\n");
             clearInputBuffer();
+            continue;
+        }
+        clearInputBuffer();
+
+        if (newStatus != FREE && newStatus != BROKEN) {
+            printf("Invalid status. Only FREE or BROKEN can be set manually.\n");
+            continue;
+        }
+        break;
+    }
+
+    //if changing from TAKEN to BROKEN -> disconnect car
+    if (portsArray[portIndex].status != newStatus) {
+        if (newStatus == BROKEN && portsArray[portIndex].status == TAKEN) {
+            //find car occupying port
+            char* licensePlate = portsArray[portIndex].occupiedByCarLicense;
+
+            if (licensePlate[0] != '\0') {
+                //find car index
+                for (int index = 0; index < numCars; index++) {
+                    if (strcmp(carsArray[index].licensePlate, licensePlate) == 0) {
+                        //add charged minutes before disconnecting
+                        handleChargingTime(&carsArray[index], &portsArray[portIndex], 1);
+
+                        //disconnect car
+                        carsArray[index].isConnected = UNCONNECTED;
+                        carsArray[index].connectedPortId = DEFAULT_PORT_ID;
+
+                        //clear port
+                        strcpy(portsArray[portIndex].occupiedByCarLicense, DEFAULT_OCCUPIED);
+                        portsArray[portIndex].status = BROKEN;
+                        memset(&portsArray[portIndex].startTime, 0, sizeof(Date));
+
+                        printf("Car disconnected due to port status change.\n");
+                        break;
+                    }
+                }
+            }
+        }
+
+        //update port status
+        portsArray[portIndex].status = newStatus;
+        printf("Port %d status updated to ", portID);
+        switch (newStatus) {
+        case FREE: printf("FREE\n"); break;
+        case TAKEN: printf("TAKEN\n"); break;
+        case BROKEN: printf("BROKEN\n"); break;
+        }
+    }
+    else
+        printf("New status is like old status.\n");
+}
+
+void printPortDetails(Port port){
+    printf("Port ID: %d\n", port.portID);
+
+    printf("Port-type: ");
+    switch (port.portType) {
+    case FAST: printf("FAST\n"); break;
+    case MID: printf("MID\n"); break;
+    case SLOW: printf("SLOW\n"); break;
+    default: printf("UNKNOWN\n"); break;
+    }
+
+    printf("Status: ");
+    switch (port.status) {
+    case FREE: printf("FREE\n"); break;
+    case TAKEN: printf("TAKEN\n"); break;
+    case BROKEN: printf("BROKEN\n"); break;
+    default: printf("UNKNOWN\n"); break;
+    }
+
+    if (port.status == TAKEN)
+        printf("Port is occupied by car: %s\n", port.occupiedByCarLicense);
+    else
+        printf("Port is not occupied.\n");
+}
+
+void displayPort(Port* portsArray, int numPorts, int portID){
+    for (int index = 0; index < numPorts; index++) {
+        if (portsArray[index].portID == portID) {
+            printPortDetails(portsArray[index]);
+            return;
+        }
+    }
+    printf("Port %d not found.\n", portID);
+}
+
+void displayAllPorts(Port* portsArray, int numPorts){
+    if (numPorts == 0) {
+        printf("No ports in the system.\n");
+        return;
+    }
+
+    printf("All charging ports:\n");
+    for (int index = 0; index < numPorts; index++) {
+        printf("\n");
+        printPortDetails(portsArray[index]);
+    }
+}
+
+int findCarIndex(Car* carsArray, int numCars, const char* licensePlate) {
+    for (int index = 0; index < numCars; index++) {
+        if (strcmp(carsArray[index].licensePlate, licensePlate) == 0)
+            return index;
+    }
+    return C_CAR_NOT_FOUND;
+}
+
+int connectCarToPort(Car* carsArray, int numCars, Port* portsArray, int numPorts) {
+    char licensePlate[MAX_LICENSE_STR + 1];
+    getValidPlate(licensePlate);
+
+    //search for car
+    int carIndex = findCarIndex(carsArray, numCars, licensePlate);
+
+    if (carIndex == -1) {
+        return C_CAR_NOT_FOUND; //car not found
+    }
+
+    if (carsArray[carIndex].isConnected == CONNECTED) {
+        return C_ALREADY_CONNECTED; //already connected
+    }
+
+    //search for free fitting port
+    for (int index = 0; index < numPorts; index++) {
+        if (portsArray[index].status == FREE &&
+            portsArray[index].portType == carsArray[carIndex].portType) {
+
+            //connect car to port
+            carsArray[carIndex].isConnected = CONNECTED;
+            carsArray[carIndex].connectedPortId = portsArray[index].portID;
+
+            //update port info
+            portsArray[index].status = TAKEN;
+            strcpy(portsArray[index].occupiedByCarLicense, licensePlate);
+            getCurrentTime(&portsArray[index].startTime);
+            return C_CONNECTION_COMPLETE; //connection complete
+        }
+    }
+    return C_PORT_NOT_FOUND; //no suitable port found
+}
+
+
+void portConnectionResult(int resultCode) {
+    switch (resultCode) {
+    case C_CAR_NOT_FOUND:
+        printf("Car not found in the system.\n");
+        break;
+    case C_ALREADY_CONNECTED:
+        printf("Car is already connected to a port.\n");
+        break;
+    case C_CONNECTION_COMPLETE:
+        printf("Car successfully connected to a port.\n");
+        break;
+    case C_PORT_NOT_FOUND:
