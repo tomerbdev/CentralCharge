@@ -456,3 +456,120 @@ void printCarDetails(Car* carToDisplay, Port* portsArray, int numPorts) {
     if (carToDisplay->isConnected) {
         //find the connected port
         int connectedPortIndex = -1;
+        for (int i = 0; i < numPorts; i++) {
+            if (portsArray[i].portID == carToDisplay->connectedPortId) {
+                connectedPortIndex = i;
+                break;
+            }
+        }
+
+        if (connectedPortIndex != -1) {
+            //update charged minutes based on current time and port startTime
+            elapsed = handleChargingTime(carToDisplay, &portsArray[connectedPortIndex], 0);
+            printf("Current session charging minutes: %d\n", elapsed);
+        }
+    }
+
+    printf("License plate: %s\n", carToDisplay->licensePlate);
+    printf("Port-type: ");
+    switch (carToDisplay->portType) {
+    case FAST: printf("FAST"); break;
+    case MID:  printf("MID"); break;
+    case SLOW: printf("SLOW"); break;
+    default:   printf("UNKNOWN"); break;
+    }
+    printf("\n");
+
+    printf("Total charged minutes: %d\n", carToDisplay->totalChargedMinutes + elapsed);
+    printf("Connection status: %s\n", carToDisplay->isConnected == CONNECTED ? "Connected" : "Not Connected");
+
+    if (carToDisplay->isConnected)
+        printf("Connected port ID: %d\n", carToDisplay->connectedPortId);
+
+    printf("\n");
+}
+
+void displayCar(Car* carsArray, int numCars, Port* portsArray, int numPorts, char* licensePlate) {
+    for (int index = 0; index < numCars; index++) {
+        if (strcmp(carsArray[index].licensePlate, licensePlate) == 0) {
+            printf("Car #%d:\n", index);
+            printCarDetails(&carsArray[index], portsArray, numPorts);  //use index here, not carIndex
+            return;
+        }
+    }
+    printf("Car not found. Returning to Menu.\n");
+}
+
+void displayAllCars(Car* carsArray, int numCars, Port* portsArray, int numPorts){
+    if (numCars == 0) {
+        printf("No cars found. Returning to menu.\n");
+        return;
+    }
+
+    printf("\nDisplaying all cars in system:\n");
+    for (int index = 0; index < numCars; index++) {
+        printf("Car #%d:\n", index);
+        printCarDetails(&carsArray[index], portsArray, numPorts);
+    }
+}
+
+//port management functions
+void addPort(Port** portsArray, int* numPorts, int* portsCapacity){
+    int portID = getValidPortID();
+
+    //check if ID exists
+    for (int index = 0; index < *numPorts; index++) {
+        if ((*portsArray)[index].portID == portID) {
+            printf("Port ID already exists in the system. Returning to Menu.\n");
+            return;
+        }
+    }
+
+    int portType = getValidPortType();
+    int status = getValidStatus();
+
+    //creating new port based on input
+    Port newPort = { 0 };
+    newPort.portID = portID;
+    newPort.portType = portType;
+    newPort.status = status;
+    strcpy(newPort.occupiedByCarLicense, DEFAULT_OCCUPIED);
+    memset(&newPort.startTime, 0, sizeof(Date));
+
+    //new port insertion
+    if (*numPorts >= *portsCapacity) //memory check
+        resizePortsArray(portsArray, portsCapacity);
+
+    int insertion = *numPorts;
+    while (insertion > 0 && (*portsArray)[insertion - 1].portID > newPort.portID) {
+        (*portsArray)[insertion] = (*portsArray)[insertion - 1];
+        insertion--;
+    }
+    (*portsArray)[insertion] = newPort;
+    (*numPorts)++;
+
+    printf("New port added to system.\n");
+}
+
+void updatePortStatus(Port* portsArray, int numPorts, Car* carsArray, int numCars){
+    int portIndex = -1, newStatus = 0;
+    int portID = getValidPortID();
+
+    //search port in system
+    for (int index = 0; index < numPorts; index++) {
+        if (portsArray[index].portID == portID) {
+            portIndex = index;
+            break;
+        }
+    }
+    if (portIndex == PORT_NOT_FOUND) {
+        printf("Port not found in system.\n");
+        return;
+    }
+
+    //update new status to port
+    while (1) {
+        printf("Enter new status (1=FREE, 3=BROKEN): ");
+        if (scanf("%d", &newStatus) != 1) {
+            printf("Invalid status. Only FREE or BROKEN can be set manually.\n");
+            clearInputBuffer();
