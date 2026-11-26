@@ -729,3 +729,118 @@ void portConnectionResult(int resultCode) {
         printf("Car successfully connected to a port.\n");
         break;
     case C_PORT_NOT_FOUND:
+        printf("No suitable charging port found for the car.\n");
+        break;
+    default:
+        printf("Unknown result code.\n");
+        break;
+    }
+}
+
+
+int calculateTotalMinutes(const Date* start, const Date* end) {
+    if (!start || !end) return 0;
+
+    struct tm start_tm = { 0 };
+    struct tm end_tm = { 0 };
+
+    start_tm.tm_year = start->year - 1900;
+    start_tm.tm_mon = start->month - 1;
+    start_tm.tm_mday = start->day;
+    start_tm.tm_hour = start->hour;
+    start_tm.tm_min = start->min;
+    start_tm.tm_isdst = -1;
+
+    end_tm.tm_year = end->year - 1900;
+    end_tm.tm_mon = end->month - 1;
+    end_tm.tm_mday = end->day;
+    end_tm.tm_hour = end->hour;
+    end_tm.tm_min = end->min;
+    end_tm.tm_isdst = -1;
+
+    time_t start_time = mktime(&start_tm);
+    time_t end_time = mktime(&end_tm);
+
+    if (start_time == (time_t)-1 || end_time == (time_t)-1 || end_time < start_time) {
+        return 0;
+    }
+
+    return (int)((end_time - start_time) / 60);
+}
+
+
+int handleChargingTime(Car* car, Port* port, int applyToCar) {
+    if (!car || !port) return 0;
+
+    Date now;
+    getCurrentTime(&now);
+
+    int minutes = calculateTotalMinutes(&port->startTime, &now);
+
+    if (applyToCar && minutes > 0) {
+        car->totalChargedMinutes += minutes;
+    }
+
+    return minutes;
+}
+
+int disconnectCarFromPort(Car* carsArray, int numCars, Port* portsArray, int numPorts) {
+    char licensePlate[MAX_LICENSE_STR + 1];
+    getValidPlate(licensePlate);
+    int chargedMinutes = 0;
+
+    //search for the car
+    int carIndex = findCarIndex(carsArray, numCars, licensePlate);
+    if (carIndex == -1) {
+        return D_CAR_NOT_FOUND;
+    }
+
+    if (carsArray[carIndex].isConnected == UNCONNECTED) {
+        return D_CAR_NOT_CONNECTED;
+    }
+
+    //find connected port
+    int portIndex = findPortIndex(portsArray, numPorts, carsArray[carIndex].connectedPortId);
+    if (portIndex == PORT_NOT_FOUND) {
+        return D_CAR_NOT_CONNECTED;
+    }
+
+    //apply charging time to car before resetting anything
+    chargedMinutes = handleChargingTime(&carsArray[carIndex], &portsArray[portIndex], 1);
+    printf("Car was charging for %d minutes.\n", chargedMinutes);
+
+    //disconnect car from port
+    carsArray[carIndex].isConnected = UNCONNECTED;
+    carsArray[carIndex].connectedPortId = DEFAULT_PORT_ID;
+
+    //reset port status, clear occupant info and startTime
+    portsArray[portIndex].status = FREE;
+    strcpy(portsArray[portIndex].occupiedByCarLicense, DEFAULT_OCCUPIED);
+    memset(&portsArray[portIndex].startTime, 0, sizeof(Date));
+
+    printf("Total charged minutes now: %d\n", carsArray[carIndex].totalChargedMinutes);
+
+    return D_DISCONNECTION_COMPLETE;
+}
+
+void portDisconnectResult(int resultCode) {
+    switch (resultCode) {
+    case D_CAR_NOT_FOUND:
+        printf("Car not found in system.\n");
+        break;
+    case D_CAR_NOT_CONNECTED:
+        printf("Car is not connected to any port.\n");
+        break;
+    case D_DISCONNECTION_COMPLETE:
+        printf("Car disconnected successfully.\n");
+        break;
+    default:
+        printf("Unknown result.\n");
+        break;
+    }
+}
+
+void checkCarChargingStatus(Car* carsArray, int numCars, Port* portsArray, int numPorts) {
+    char licensePlate[MAX_LICENSE_STR + 1];
+    getValidPlate(licensePlate);
+
