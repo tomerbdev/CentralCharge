@@ -844,3 +844,260 @@ void checkCarChargingStatus(Car* carsArray, int numCars, Port* portsArray, int n
     char licensePlate[MAX_LICENSE_STR + 1];
     getValidPlate(licensePlate);
 
+    int carIndex = findCarIndex(carsArray, numCars, licensePlate);
+    if (carIndex == -1) {
+        printf("Car not found charging, returning to menu.\n");
+        return;
+    }
+
+    if (carsArray[carIndex].isConnected == UNCONNECTED) {
+        printf("Car is not currently connected to any port.\n");
+        return;
+    }
+
+    int portIndex = findPortIndex(portsArray, numPorts, carsArray[carIndex].connectedPortId);
+    if (portIndex == PORT_NOT_FOUND) {
+        printf("Port connected to car not found.\n");
+        return;
+    }
+
+    int minutesCharging = calculateTotalMinutes(&portsArray[portIndex].startTime, &(Date){0});
+    Date now;
+    getCurrentTime(&now);
+    minutesCharging = calculateTotalMinutes(&portsArray[portIndex].startTime, &now);
+
+    printf("Car %s has been charging for %d minutes.\n", licensePlate, minutesCharging);
+}
+
+void deleteCar(Car** carsArray, int* carsCapacity, int* numCars, const char* license, Port* portsArray, int numPorts) {
+    int index = -1;
+
+    // Find car by license
+    for (int i = 0; i < *numCars; i++) {
+        if (strcmp((*carsArray)[i].licensePlate, license) == 0) {
+            index = i;
+            break;
+        }
+    }
+
+    if (index == -1) {
+        printf("Can not delete. Car with license %s not found. Return to menu.\n", license);
+        return;
+    }
+
+    //if connected, disconnect first
+    if ((*carsArray)[index].isConnected == CONNECTED) {
+        int portIndex = -1;
+        for (int j = 0; j < numPorts; j++) {
+            if (portsArray[j].portID == (*carsArray)[index].connectedPortId) {
+                portIndex = j;
+                break;
+            }
+        }
+
+        if (portIndex != -1) {
+            //update charged minutes and disconnect
+            int chargedMinutes = handleChargingTime(&(*carsArray)[index], &portsArray[portIndex], 0);
+            printf("Car was charging for %d minutes before deletion.\n", chargedMinutes);
+
+            //disconnect car
+            (*carsArray)[index].isConnected = UNCONNECTED;
+            (*carsArray)[index].connectedPortId = DEFAULT_PORT_ID;
+
+            //free the port
+            portsArray[portIndex].status = FREE;
+            strcpy(portsArray[portIndex].occupiedByCarLicense, DEFAULT_OCCUPIED);
+            memset(&portsArray[portIndex].startTime, 0, sizeof(Date));
+            printf("Car disconnected from port before deletion.\n");
+        }
+        else {
+            printf("Warning: connected port not found, cannot disconnect car properly.\n");
+        }
+    }
+
+    //shift cars left to remove the car
+    for (int i = index; i < (*numCars) - 1; i++) {
+        (*carsArray)[i] = (*carsArray)[i + 1];
+    }
+
+    (*numCars)--;
+
+    printf("Car %s deleted successfully.\n", license);
+
+    //resize array if too sparse
+    if (*numCars < *carsCapacity / 4 && *carsCapacity > 1) {
+        int newCapacity = *carsCapacity / 2;
+        Car* temp = realloc(*carsArray, newCapacity * sizeof(Car));
+        if (temp != NULL) {
+            *carsArray = temp;
+            *carsCapacity = newCapacity;
+            printf("Cars array resized to capacity %d.\n", newCapacity);
+        }
+        else {
+            printf("Warning: resizing cars array failed.\n");
+        }
+    }
+}
+
+void deletePort(Port** portsArray, int* portsCapacity, int* numPorts, int portId, Car* carsArray, int numCars) {
+    int index = -1;
+    int chargedMinutes = 0;
+
+    //find port by id
+    for (int i = 0; i < *numPorts; i++) {
+        if ((*portsArray)[i].portID == portId) {
+            index = i;
+            break;
+        }
+    }
+
+    if (index == -1) {
+        printf("Port %d not found.\n", portId);
+        return;
+    }
+
+    //disconnect any car connected to this port
+    for (int i = 0; i < numCars; i++) {
+        if (carsArray[i].isConnected == CONNECTED && carsArray[i].connectedPortId == portId) {
+            // Update charged minutes and disconnect car
+            chargedMinutes = handleChargingTime(&carsArray[i], &(*portsArray)[index], 1);
+            printf("Car %s was charging for %d minutes before port deletion.\n", carsArray[i].licensePlate, chargedMinutes);
+
+            carsArray[i].isConnected = UNCONNECTED;
+            carsArray[i].connectedPortId = DEFAULT_PORT_ID;
+
+            printf("Car %s disconnected from port %d before port deletion.\n", carsArray[i].licensePlate, portId);
+        }
+    }
+
+    //shift ports left to remove the port
+    for (int i = index; i < (*numPorts) - 1; i++) {
+        (*portsArray)[i] = (*portsArray)[i + 1];
+    }
+
+    (*numPorts)--;
+
+    printf("Port %d deleted successfully.\n", portId);
+
+    //resize array if too sparse
+    if (*numPorts < *portsCapacity / 4 && *portsCapacity > 1) {
+        int newCapacity = *portsCapacity / 2;
+        Port* temp = realloc(*portsArray, newCapacity * sizeof(Port));
+        if (temp != NULL) {
+            *portsArray = temp;
+            *portsCapacity = newCapacity;
+            printf("Ports array resized to capacity %d.\n", newCapacity);
+        }
+        else {
+            printf("Warning: resizing ports array failed.\n");
+        }
+    }
+}
+
+void printMenu(void) {
+    printf("\nCentral Charge Menu, please choose one of the options (1-13):\n");
+    printf("1. Display all cars\n");
+    printf("2. Add a new car\n");
+    printf("3. Display car details\n");
+    printf("4. Display all charging ports\n");
+    printf("5. Add a new charging port\n");
+    printf("6. Display port details\n");
+    printf("7. Update port status\n");
+    printf("8. Connect a car to port\n");
+    printf("9. Check car charging status\n");
+    printf("10. Disconnect a car from port\n");
+    printf("11. Delete car\n");
+    printf("12. Delete charging port\n");
+    printf("13. Exit system\n");
+    printf("\nEnter your choice: ");
+}
+
+//helper to subtract minutes from current time into Date struct
+void getPastTime(Date* date, int minutesAgo) {
+    time_t now = time(NULL);
+    time_t past = now - (minutesAgo * 60);
+    struct tm* tm_info = localtime(&past);
+
+    date->year = tm_info->tm_year + 1900;
+    date->month = tm_info->tm_mon + 1;
+    date->day = tm_info->tm_mday;
+    date->hour = tm_info->tm_hour;
+    date->min = tm_info->tm_min;
+}
+
+//format Date to string for printing
+void formatDate(const Date* date, char* buffer, int bufsize) {
+    snprintf(buffer, bufsize, "%04d-%02d-%02d %02d:%02d",
+        date->year, date->month, date->day, date->hour, date->min);
+}
+
+void preloadTestData(Car** carsArray, int* numCars, int* carsCapacity,
+    Port** portsArray, int* numPorts, int* portsCapacity) {
+    while (*carsCapacity < 15)
+        resizeCarsArray(carsArray, carsCapacity);
+    while (*portsCapacity < 15)
+        resizePortsArray(portsArray, portsCapacity);
+
+    const char* plates[15] = {
+        "11111", "12345", "22222", "23344", "334455",
+        "44444", "556677", "66666", "77777", "778899",
+        "88888", "98765", "998877", "99999", "112233"
+    };
+
+    int carTypes[15] = {
+        2, 3, 2, 1, 2,
+        3, 3, 1, 3, 3,
+        1, 2, 1, 2, 1
+    };
+
+    int portIDs[15] = {
+        1001, 1100, 1110, 2222, 3003,
+        3333, 4200, 5555, 6100, 7000,
+        7500, 8005, 8888, 9001, 9900
+    };
+
+    int portTypes[15] = {
+        2, 3, 1, 3, 1,
+        2, 3, 1, 3, 1,
+        2, 3, 2, 2, 1
+    };
+
+    //initialize ports first
+    for (int i = 0; i < 15; i++) {
+        (*portsArray)[i].portID = portIDs[i];
+        (*portsArray)[i].portType = portTypes[i];
+        (*portsArray)[i].status = FREE;
+        strcpy((*portsArray)[i].occupiedByCarLicense, "");
+        memset(&(*portsArray)[i].startTime, 0, sizeof(Date));
+    }
+    *numPorts = 15;
+
+    //initialize cars and connect to ports with staggered past times
+    for (int i = 0; i < 15; i++) {
+        strcpy((*carsArray)[i].licensePlate, plates[i]);
+        (*carsArray)[i].portType = carTypes[i];
+        (*carsArray)[i].totalChargedMinutes = 0;
+        (*carsArray)[i].isConnected = CONNECTED;
+        (*carsArray)[i].connectedPortId = portIDs[i]; //connect car to matching port by index
+
+        //update port status and occupied car
+        (*portsArray)[i].status = TAKEN;
+        strcpy((*portsArray)[i].occupiedByCarLicense, plates[i]);
+
+        //asign startTime as different past time:
+        int minutesAgo = (2 * 24 * 60) + (i * 3 * 60); //2 days + i*3 hours in minutes
+        getPastTime(&(*portsArray)[i].startTime, minutesAgo);
+
+        //calculate minutes charging so far and update car
+        int chargedMins = handleChargingTime(&(*carsArray)[i], &(*portsArray)[i], 0);
+
+        char startTimeStr[20];
+        formatDate(&(*portsArray)[i].startTime, startTimeStr, sizeof(startTimeStr));
+
+        printf("Car %s connected to port %d at %s, charged minutes so far: %d\n",
+            plates[i], portIDs[i], startTimeStr, chargedMins);
+    }
+    *numCars = 15;
+
+    printf("\nATTENTION! FOR TESTING: Preloaded 15 cars and 15 ports with staggered past connection times.\n");
+}
